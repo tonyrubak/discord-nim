@@ -10,6 +10,15 @@ import std/tables
 # uses this file as the main entry point of the application.
 
 type
+  WebSocketFrame = object
+    fin, opcode, mask, payload_length: uint8
+    payload: string
+
+proc decode(frame: string) : WebSocketFrame =
+  let mask = frame[1].shr(7) and 1
+
+
+type
   HttpRequest = object
     httpMethod, uri, body: string
     headers: TableRef[string, string]
