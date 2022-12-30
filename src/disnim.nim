@@ -1,22 +1,18 @@
 import std/base64
 import std/json
+import std/nativesockets
 import std/net
 import std/parseutils
 import std/random
+import std/sequtils
 import std/strformat
 import std/strutils
 import std/tables
+import std/unittest
+
+import websockets
 # This is just an example to get you started. A typical binary package
 # uses this file as the main entry point of the application.
-
-type
-  WebSocketFrame = object
-    fin, opcode, mask, payload_length: uint8
-    payload: string
-
-proc decode(frame: string) : WebSocketFrame =
-  let mask = frame[1].shr(7) and 1
-
 
 type
   HttpRequest = object
@@ -189,7 +185,7 @@ proc connect(gateway : string) : bool =
 
 when isMainModule:
   let gateway = getGateway()
-  if connect(gateway[6..gateway.len-1]):
+  if connect(gateway[6..<gateway.len]):
     echo "Connection successful"
   else:
     echo "Connection unsuccessful"
