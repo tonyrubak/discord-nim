@@ -1,7 +1,7 @@
+import std/endians
 import std/nativesockets
 import std/random
 import std/sequtils
-import std/strformat
 import std/unittest
 
 type
@@ -45,6 +45,38 @@ proc decode*(frame: seq[uint8]) : WebSocketFrame =
     payload : cast[string](payload)
   )
 
+proc encode*(payload: string) : seq[uint8] =
+  let (len, len_bytes) = if payload.len > 0xFFFF:
+    (127,8)
+  elif payload.len > 0x7F:
+    (126,2)
+  else:
+    (payload.len,0)
+  
+  var frame = newSeq[uint8]()
+  frame.setLen(len + len_bytes + 6)
+  frame[0] = 0x81 # Always fin and text... for now?
+  frame[1] = len.uint8 or 0x80 # len and mask = 1. client always masks.
+
+  if (len_bytes == 8):
+    bigEndian64(frame[2].unsafeAddr,len.unsafeAddr)
+  elif (len_bytes == 2):
+    bigEndian16(frame[2].unsafeAddr,len.unsafeAddr)
+
+  # Generate masking key
+  # @TODO the random key should probably be actually random
+  # but we'll survive for now
+  for i in len_bytes+2..len_bytes+5:
+    frame[i] = rand(uint8)
+  
+  let offset = len_bytes + 6
+  let mask_offset = len_bytes + 2
+
+  for i in 0..payload.len-1:
+    frame[offset + i] = payload[i].uint8 xor frame[mask_offset + i mod 4]
+
+  return frame
+# end proc encode
 
 when isMainModule:
   var frame = @[0x81.uint8,0x02.uint8,0xFF.uint8,0xEE.uint8]
@@ -62,7 +94,6 @@ when isMainModule:
   check(frame[2..3] == cast[seq[uint8]](parsedFrame.payload.toSeq))
 
   #############################################################################
-  var r = initRand(0)
 
   let
     length = rand(uint16)
@@ -117,3 +148,14 @@ when isMainModule:
   check(parsedFrame.mask == 1)
   check(parsedFrame.payload_length == 2)
   check(cast[seq[uint8]](parsedFrame.payload.toSeq) == @[0xAA.uint8,0xFF.uint8])
+
+  # test "given a short payload returns an encoded websocket frame"
+  let payload = "test"
+  frame = encode(payload)
+  parsedFrame = decode(frame)
+
+  check(parsedFrame.fin == 1)
+  check(parsedFrame.opcode == 1)
+  check(parsedFrame.mask == 1)
+  check(parsedFrame.payload_length == 4)
+  check(parsedFrame.payload == payload)
